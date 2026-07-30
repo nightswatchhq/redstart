@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { Wordmark } from "./logo";
 
-const REPO = "https://github.com/lodestar-team/redstart";
-const DOCS = "https://lodestar-team.github.io/redstart/";
+const REPO = "https://github.com/nightswatchhq/redstart";
+const DOCS = "https://nightswatchhq.github.io/redstart/";
 
 export function Nav() {
   return (

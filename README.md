@@ -135,24 +135,24 @@ reference and store-diffs them at a fixed block.
 
 ```sh
 # Quick install (macOS + Linux) — downloads the pre-built binary, no Rust required
-curl -fsSL https://raw.githubusercontent.com/lodestar-team/redstart/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/nightswatchhq/redstart/main/scripts/install.sh | sh
 
 # Homebrew (macOS + Linux)
-brew install lodestar-team/tap/redstart
+brew install nightswatchhq/tap/redstart
 
 # Cargo (needs a Rust toolchain)
-cargo install --git https://github.com/lodestar-team/redstart redstart-cli
+cargo install --git https://github.com/nightswatchhq/redstart redstart-cli
 ```
 
 Or grab a pre-built binary for macOS (arm64/x86_64) or Linux (x86_64/arm64)
-straight from the [latest release](https://github.com/lodestar-team/redstart/releases/latest).
+straight from the [latest release](https://github.com/nightswatchhq/redstart/releases/latest).
 Any of these put a `redstart` binary on your `PATH` — then just run `redstart …`.
 
 ## Playground
 
 Try Redstart in your browser — write `.red` on the left, watch the generated
 `mappings.ts` / `schema.graphql` / `subgraph.yaml` regenerate as you type:
-**[lodestar-team.github.io/redstart/playground](https://lodestar-team.github.io/redstart/playground/)**.
+**[nightswatchhq.github.io/redstart/playground](https://nightswatchhq.github.io/redstart/playground/)**.
 It runs the real compiler (loader → checker → codegen) compiled to WebAssembly —
 no server, no install. Build it locally with `./playground/build.sh`.
 
@@ -172,7 +172,7 @@ redstart deploy my-slug               # …and graph deploy to Subgraph Studio
 Want to poke at the worked examples? Clone the repo and point `redstart` at them:
 
 ```sh
-git clone https://github.com/lodestar-team/redstart && cd redstart
+git clone https://github.com/nightswatchhq/redstart && cd redstart
 
 # a real-world subgraph: a faithful port of PaulieB14's Graph Horizon indexer —
 # 3 Arbitrum contracts, helpers, timeseries/aggregations. Ejects to WASM

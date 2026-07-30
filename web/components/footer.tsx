@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { Bird } from "./logo";
 
-const REPO = "https://github.com/lodestar-team/redstart";
-const DOCS = "https://lodestar-team.github.io/redstart/";
+const REPO = "https://github.com/nightswatchhq/redstart";
+const DOCS = "https://nightswatchhq.github.io/redstart/";
 // Short build id so you can eyeball which deploy a browser is actually running.
 const BUILD = (process.env.NEXT_PUBLIC_BUILD_ID || "dev").slice(0, 7);
 

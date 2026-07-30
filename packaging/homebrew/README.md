@@ -8,7 +8,7 @@ to the tap on every tagged release, so the tap stays in sync automatically.
 ## One-time setup
 
 1. **Create the tap repo.** A public repo called `homebrew-tap` under the same
-   org (default the workflow expects: `lodestar-team/homebrew-tap`). It can start
+   org (default the workflow expects: `nightswatchhq/homebrew-tap`). It can start
    empty — the workflow creates `Formula/redstart.rb` on the first release.
 
    To point at a different tap, set a repo variable `HOMEBREW_TAP_REPO`
@@ -36,9 +36,9 @@ and updates the tap.
 ## Installing
 
 ```sh
-brew install lodestar-team/tap/redstart
+brew install nightswatchhq/tap/redstart
 # or, after tapping once:
-brew tap lodestar-team/tap
+brew tap nightswatchhq/tap
 brew install redstart
 ```
 

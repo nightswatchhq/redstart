@@ -240,5 +240,5 @@ Stage 0 — foundations. The first end-to-end vertical slice.
 - Release pipeline: cross-compiled binaries (macOS arm64/x86_64,
   Linux x86_64/arm64) to GitHub Releases + Homebrew tap.
 
-[Unreleased]: https://github.com/lodestar-team/redstart/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/lodestar-team/redstart/releases/tag/v0.1.0
+[Unreleased]: https://github.com/nightswatchhq/redstart/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/nightswatchhq/redstart/releases/tag/v0.1.0
