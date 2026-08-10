@@ -341,6 +341,12 @@ impl EntityMeta {
     fn is_derived(&self, name: &str) -> bool {
         self.fields.iter().any(|f| f.name == name && f.is_derived)
     }
+
+    /// Whether the named field is declared `Option<T>` — the only kind that can
+    /// be cleared with `None`.
+    fn is_optional(&self, name: &str) -> bool {
+        self.fields.iter().any(|f| f.name == name && f.is_optional)
+    }
 }
 
 fn is_option_type(ty: &TypeExpr) -> bool {
@@ -607,6 +613,9 @@ fn check_handler(
     let abi_name = source_abi.get(&h.source.name).cloned().unwrap_or_default();
 
     // Resolve the handler's trigger members and the type of its parameter.
+    // Whether the ABI gave us an authoritative parameter list — only then can an
+    // unknown `event.params.x` be called a mistake rather than a blind spot.
+    let mut params_known = false;
     let (param_ty, params, outputs) = match &h.kind {
         HandlerKind::Event => {
             if abis.readable(&abi_name) && abis.event_params(&abi_name, &h.event.name).is_none() {
@@ -621,11 +630,9 @@ fn check_handler(
                     .with_help("check the event name and casing against the ABI"),
                 );
             }
-            (
-                RTy::Event,
-                rty_map(abis.event_params(&abi_name, &h.event.name)),
-                HashMap::new(),
-            )
+            let resolved = abis.event_params(&abi_name, &h.event.name);
+            params_known = resolved.is_some();
+            (RTy::Event, rty_map(resolved), HashMap::new())
         }
         HandlerKind::Call => {
             if abis.readable(&abi_name) && abis.function_inputs(&abi_name, &h.event.name).is_none()
@@ -660,9 +667,11 @@ fn check_handler(
                     );
                 }
             }
+            let resolved = abis.function_inputs(&abi_name, &h.event.name);
+            params_known = resolved.is_some();
             (
                 RTy::Call,
-                rty_map(abis.function_inputs(&abi_name, &h.event.name)),
+                rty_map(resolved),
                 rty_map(abis.function_output_params(&abi_name, &h.event.name)),
             )
         }
@@ -694,6 +703,7 @@ fn check_handler(
         event_param: h.param.name.clone(),
         param_ty,
         event_params: params,
+        params_known,
         call_outputs: outputs,
         fn_returns,
         abis,
@@ -742,6 +752,7 @@ fn check_fn(
         event_param: String::new(),
         param_ty: RTy::Unknown,
         event_params: HashMap::new(),
+        params_known: false,
         call_outputs: HashMap::new(),
         fn_returns,
         abis,
@@ -793,6 +804,9 @@ struct BodyCtx<'a> {
     param_ty: RTy,
     /// Event params (event handler) or function inputs (call handler).
     event_params: HashMap<String, RTy>,
+    /// Whether `event_params` came from a resolved ABI entry (so an absent name
+    /// is a real error) rather than an unreadable or missing ABI.
+    params_known: bool,
     /// Function outputs (call handler only).
     call_outputs: HashMap<String, RTy>,
     /// Free-function name -> resolved return type.
@@ -828,6 +842,7 @@ fn check_block(
             }
             Stmt::Assign { target, value, .. } => {
                 check_assign_target(target, ctx, locals, file, diags);
+                check_none_assignment(target, value, ctx, locals, file, diags);
                 warn_bigint_division_precision(target, value, ctx, locals, file, diags);
                 check_expr(target, ctx, locals, file, diags);
                 check_expr(value, ctx, locals, file, diags);
@@ -2032,6 +2047,51 @@ fn check_assign_target(
     }
 }
 
+/// Clearing a field — `trove.interestBatch = None` — only makes sense when the
+/// field is nullable. Assigning `None` to a required field would store a null in
+/// a non-nullable column, which graph-node rejects at write time.
+fn check_none_assignment(
+    target: &Expr,
+    value: &Expr,
+    ctx: &BodyCtx,
+    locals: &HashMap<String, RTy>,
+    file: &str,
+    diags: &mut Vec<Diag>,
+) {
+    if !is_none_literal(value) {
+        return;
+    }
+    let Expr::Field { base, field, .. } = target else {
+        return;
+    };
+    let RTy::Entity(entity) = infer(base, ctx, locals) else {
+        return;
+    };
+    let Some(meta) = ctx.meta.get(&entity) else {
+        return;
+    };
+    if meta.has_field(&field.name) && !meta.is_optional(&field.name) {
+        diags.push(
+            Diag::new(
+                file,
+                value.span(),
+                "E056",
+                format!("cannot clear required field `{}` on `{entity}`", field.name),
+                "this field is not optional",
+            )
+            .with_help(
+                "only an `Option<T>` field can be cleared — declare it `Option<T>`, or assign a value",
+            ),
+        );
+    }
+}
+
+/// Whether an expression is the bare `None` literal.
+fn is_none_literal(expr: &Expr) -> bool {
+    matches!(expr, Expr::Path { segments, .. }
+        if segments.len() == 1 && segments[0].name == "None")
+}
+
 /// Walk an expression, flagging the contract-call and nullable-arithmetic
 /// footguns.
 fn check_expr(
@@ -2048,6 +2108,20 @@ fn check_expr(
                     Diag::new(file, &field.span, "E060", "cannot read `.value` of a contract call directly", "this call may have reverted")
                         .with_help("`match` on the result: `match call { Ok(v) => { … } Err(e) => { … } }`"),
                 ),
+                // `.save()` is the reflex every subgraph author brings with them,
+                // and "has no field `save`" teaches nothing. Say why it's absent.
+                RTy::Entity(_) if field.name == "save" => diags.push(
+                    Diag::new(
+                        file,
+                        &field.span,
+                        "E055",
+                        "entities save themselves — remove this `.save()`",
+                        "not needed",
+                    )
+                    .with_help(
+                        "Redstart dirty-tracks every entity it creates or mutates and saves it at the end of the scope, including on an early `return` — a forgotten `.save()` is unrepresentable",
+                    ),
+                ),
                 RTy::Entity(name) if field.name != "id" => {
                     if ctx.meta.get(&name).is_some_and(|m| !m.has_field(&field.name)) {
                         diags.push(Diag::new(
@@ -2063,6 +2137,31 @@ fn check_expr(
                     Diag::new(file, &field.span, "E062", format!("cannot access `.{}` on a nullable value", field.name), "this may be null")
                         .with_help("`match` it first: `match x { Some(v) => { … } None => { … } }` — `load`/`loadInBlock`/`ipfs.cat` can return nothing"),
                 ),
+                // The ABI is the source of truth for what a trigger carries, so a
+                // name it doesn't declare is a typo or a renamed parameter — the
+                // manifest/handler drift this language exists to make impossible.
+                RTy::Params | RTy::CallInputs
+                    if ctx.params_known && !ctx.event_params.contains_key(&field.name) =>
+                {
+                    let mut known: Vec<&str> =
+                        ctx.event_params.keys().map(String::as_str).collect();
+                    known.sort_unstable();
+                    let help = if known.is_empty() {
+                        "this trigger declares no parameters".to_string()
+                    } else {
+                        format!("declared parameters: {}", known.join(", "))
+                    };
+                    diags.push(
+                        Diag::new(
+                            file,
+                            &field.span,
+                            "E057",
+                            format!("no parameter `{}` on this trigger", field.name),
+                            "not in the ABI",
+                        )
+                        .with_help(help),
+                    );
+                }
                 _ => {}
             }
             check_expr(base, ctx, locals, file, diags);

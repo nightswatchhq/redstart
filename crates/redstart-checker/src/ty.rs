@@ -71,16 +71,37 @@ pub struct EntityInfo {
 }
 
 /// Map a Solidity ABI type to a resolved type.
+///
+/// Integer *width* matters: `graph codegen` lowers the narrow widths to a native
+/// `i32` and everything wider to a `BigInt`, so typing a `uint8` as `BigInt`
+/// emits `.equals(1)` on an `i32` — code that doesn't compile. The width table
+/// here is graph-cli's, exactly: `int8…int32` and `uint8…uint24` are `i32`.
 #[must_use]
 pub fn sol_to_rty(sol: &str) -> RTy {
+    // `uint8[]`, `address[3]` — an array of the element type.
+    if let Some(open) = sol.rfind('[') {
+        if sol.ends_with(']') {
+            return RTy::List(Box::new(sol_to_rty(&sol[..open])));
+        }
+    }
     if sol == "address" {
         RTy::Address
     } else if sol == "bool" {
         RTy::Boolean
     } else if sol == "string" {
         RTy::String
-    } else if sol.starts_with("uint") || sol.starts_with("int") {
-        RTy::BigInt
+    } else if let Some(bits) = sol.strip_prefix("uint") {
+        if matches!(bits, "8" | "16" | "24") {
+            RTy::Int
+        } else {
+            RTy::BigInt
+        }
+    } else if let Some(bits) = sol.strip_prefix("int") {
+        if matches!(bits, "8" | "16" | "24" | "32") {
+            RTy::Int
+        } else {
+            RTy::BigInt
+        }
     } else if sol.starts_with("bytes") {
         RTy::Bytes
     } else {
@@ -98,7 +119,10 @@ pub fn is_scalar(name: &str) -> bool {
             | "Bytes"
             | "Address"
             | "String"
+            // Both spellings: `Bool` is Redstart's, `Boolean` is what every
+            // schema.graphql being ported from says.
             | "Bool"
+            | "Boolean"
             | "Int"
             | "Int8"
             | "Timestamp"
@@ -134,7 +158,7 @@ pub fn resolve_type(ty: &TypeExpr, entities: &HashMap<String, EntityInfo>) -> RT
             "Bytes" => RTy::Bytes,
             "Address" => RTy::Address,
             "String" => RTy::String,
-            "Bool" => RTy::Boolean,
+            "Bool" | "Boolean" => RTy::Boolean,
             "Int" => RTy::Int,
             other if entities.contains_key(other) => RTy::Entity(other.to_string()),
             _ => RTy::Unknown,

@@ -624,3 +624,69 @@ fn infers_immutable_for_append_only_entities() {
         "Account must not be inferred immutable"
     );
 }
+
+// ---- porting-friction regressions (v0.16.0) ----
+
+#[test]
+fn boolean_is_accepted_as_a_scalar_spelling() {
+    // Every schema.graphql being ported says `Boolean`, not `Bool`.
+    let src = format!(
+        "{PREAMBLE}\nentity Flagged {{ id: Id<Bytes> ok: Boolean paused: Bool }}\n\
+         handler on Token.Transfer(event) {{\n  \
+           let f = Flagged.create(event.id, {{ ok: true, paused: false }})\n}}\n"
+    );
+    assert!(run(&src).is_ok(), "`Boolean` must be a valid scalar");
+}
+
+#[test]
+fn narrow_solidity_ints_are_native_ints() {
+    use crate::ty::{sol_to_rty, RTy};
+    // graph-cli's table: int8..int32 and uint8..uint24 are i32, the rest BigInt.
+    for t in ["uint8", "uint16", "uint24", "int8", "int16", "int24", "int32"] {
+        assert_eq!(sol_to_rty(t), RTy::Int, "{t} should be a native Int");
+    }
+    for t in ["uint32", "uint64", "uint256", "int64", "int256", "uint", "int"] {
+        assert_eq!(sol_to_rty(t), RTy::BigInt, "{t} should be a BigInt");
+    }
+    assert_eq!(sol_to_rty("uint8[]"), RTy::List(Box::new(RTy::Int)));
+    assert_eq!(sol_to_rty("address[3]"), RTy::List(Box::new(RTy::Address)));
+}
+
+#[test]
+fn save_teaches_that_entities_save_themselves() {
+    let src = with_handler(
+        "let a = Account.loadOrCreate(event.params.to, { balance: BigInt.zero })\n\
+         a.save()",
+    );
+    assert_err_contains(run(&src), "entities save themselves");
+}
+
+#[test]
+fn none_clears_an_optional_field_but_not_a_required_one() {
+    let ok = format!(
+        "{PREAMBLE}\nentity Trove {{ id: Id<Bytes> owner: Bytes batch: Option<String> }}\n\
+         handler on Token.Transfer(event) {{\n  \
+           let t = Trove.create(event.id, {{ owner: event.params.from }})\n  \
+           t.batch = None\n}}\n"
+    );
+    assert!(run(&ok).is_ok(), "clearing an Option field is allowed");
+
+    let bad = format!(
+        "{PREAMBLE}\nentity Trove {{ id: Id<Bytes> owner: Bytes }}\n\
+         handler on Token.Transfer(event) {{\n  \
+           let t = Trove.create(event.id, {{ owner: event.params.from }})\n  \
+           t.owner = None\n}}\n"
+    );
+    assert_err_contains(run(&bad), "cannot clear required field `owner`");
+}
+
+#[test]
+fn an_event_parameter_the_abi_lacks_is_an_error() {
+    let src = with_handler(
+        "let a = Account.create(event.id, { balance: event.params.notARealParam })",
+    );
+    assert_err_contains(run(&src), "no parameter `notARealParam`");
+    // …and the real ones still pass.
+    let ok = with_handler("let a = Account.create(event.id, { balance: event.params.value })");
+    assert!(run(&ok).is_ok());
+}

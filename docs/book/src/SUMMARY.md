@@ -4,6 +4,7 @@
 
 - [Installation](./installation.md)
 - [Quick start](./quick-start.md)
+- [Porting an existing subgraph](./porting.md)
 
 # Language tour
 
