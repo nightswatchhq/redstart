@@ -642,10 +642,14 @@ fn boolean_is_accepted_as_a_scalar_spelling() {
 fn narrow_solidity_ints_are_native_ints() {
     use crate::ty::{sol_to_rty, RTy};
     // graph-cli's table: int8..int32 and uint8..uint24 are i32, the rest BigInt.
-    for t in ["uint8", "uint16", "uint24", "int8", "int16", "int24", "int32"] {
+    for t in [
+        "uint8", "uint16", "uint24", "int8", "int16", "int24", "int32",
+    ] {
         assert_eq!(sol_to_rty(t), RTy::Int, "{t} should be a native Int");
     }
-    for t in ["uint32", "uint64", "uint256", "int64", "int256", "uint", "int"] {
+    for t in [
+        "uint32", "uint64", "uint256", "int64", "int256", "uint", "int",
+    ] {
         assert_eq!(sol_to_rty(t), RTy::BigInt, "{t} should be a BigInt");
     }
     assert_eq!(sol_to_rty("uint8[]"), RTy::List(Box::new(RTy::Int)));
@@ -682,9 +686,8 @@ fn none_clears_an_optional_field_but_not_a_required_one() {
 
 #[test]
 fn an_event_parameter_the_abi_lacks_is_an_error() {
-    let src = with_handler(
-        "let a = Account.create(event.id, { balance: event.params.notARealParam })",
-    );
+    let src =
+        with_handler("let a = Account.create(event.id, { balance: event.params.notARealParam })");
     assert_err_contains(run(&src), "no parameter `notARealParam`");
     // …and the real ones still pass.
     let ok = with_handler("let a = Account.create(event.id, { balance: event.params.value })");

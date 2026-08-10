@@ -700,9 +700,7 @@ fn lower_expr(expr: &Expr, env: &mut Env, scope: &mut Scope) -> String {
         // `None` is Redstart's absent value. Assigned to an `Option<T>` field it
         // becomes graph-ts's `null`, whose generated setter calls `unset(field)`
         // — the clear-a-relation move, without reaching for the raw store.
-        Expr::Path { segments, .. }
-            if segments.len() == 1 && segments[0].name == "None" =>
-        {
+        Expr::Path { segments, .. } if segments.len() == 1 && segments[0].name == "None" => {
             "null".to_string()
         }
         Expr::Path { segments, .. } => segments

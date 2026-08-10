@@ -173,7 +173,10 @@ fn render_file_template(
         .filter(|h| h.is_file() && h.source.name == template.name.name)
         .collect();
     match file_handlers.as_slice() {
-        [handler] => out.push_str(&format!("      handler: {}\n", input.names.fn_name(handler))),
+        [handler] => out.push_str(&format!(
+            "      handler: {}\n",
+            input.names.fn_name(handler)
+        )),
         [] => warnings.push(format!(
             "file template `{}` has no `handler file {0}(content) {{ … }}`",
             template.name.name
@@ -290,7 +293,10 @@ fn render_mapping(
     if !blocks.is_empty() {
         out.push_str("      blockHandlers:\n");
         for handler in blocks {
-            out.push_str(&format!("        - handler: {}\n", input.names.fn_name(handler)));
+            out.push_str(&format!(
+                "        - handler: {}\n",
+                input.names.fn_name(handler)
+            ));
             match &handler.kind {
                 HandlerKind::Block(BlockFilter::Polling(every)) => {
                     out.push_str(&format!(

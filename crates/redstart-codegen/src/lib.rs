@@ -709,8 +709,16 @@ handler on Token.Transfer(event) {
             "[project]\nname = \"two\"\nentry = \"src/main.red\"\ndescription = \"has: a colon\"",
         )
         .unwrap();
-        fs::write(dir.path().join(format!("src/abis/{}.json", abi_a.0)), abi_a.1).unwrap();
-        fs::write(dir.path().join(format!("src/abis/{}.json", abi_b.0)), abi_b.1).unwrap();
+        fs::write(
+            dir.path().join(format!("src/abis/{}.json", abi_a.0)),
+            abi_a.1,
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join(format!("src/abis/{}.json", abi_b.0)),
+            abi_b.1,
+        )
+        .unwrap();
         fs::write(dir.path().join("src/main.red"), main_red).unwrap();
 
         let tree = redstart_loader::load(dir.path()).unwrap();
