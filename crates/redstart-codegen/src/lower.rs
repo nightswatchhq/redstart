@@ -697,6 +697,12 @@ fn lower_expr(expr: &Expr, env: &mut Env, scope: &mut Scope) -> String {
         Expr::Decimal { raw, .. } => format!("BigDecimal.fromString(\"{raw}\")"),
         Expr::Str { value, .. } => format!("\"{}\"", value.replace('"', "\\\"")),
         Expr::Bool { value, .. } => value.to_string(),
+        // `None` is Redstart's absent value. Assigned to an `Option<T>` field it
+        // becomes graph-ts's `null`, whose generated setter calls `unset(field)`
+        // — the clear-a-relation move, without reaching for the raw store.
+        Expr::Path { segments, .. } if segments.len() == 1 && segments[0].name == "None" => {
+            "null".to_string()
+        }
         Expr::Path { segments, .. } => segments
             .iter()
             .map(|s| s.name.clone())
@@ -747,11 +753,21 @@ fn lower_field(base: &Expr, field: &str, env: &mut Env, scope: &mut Scope) -> St
             }
         }
     }
-    // Static zero accessors: `BigInt.zero` -> `BigInt.zero()`.
-    if field == "zero" {
-        if let Expr::Path { segments, .. } = base {
-            if segments.len() == 1 && matches!(segments[0].name.as_str(), "BigInt" | "BigDecimal") {
-                return format!("{}.zero()", segments[0].name);
+    // Nullary static accessors read as properties in Redstart and are called in
+    // AssemblyScript: `BigInt.zero` -> `BigInt.zero()`, `Bytes.empty` ->
+    // `Bytes.empty()`. Written without the call, they'd lower to a function
+    // reference and fail to compile on eject.
+    if let Expr::Path { segments, .. } = base {
+        if segments.len() == 1 {
+            let ty = segments[0].name.as_str();
+            let nullary = matches!(
+                (ty, field),
+                ("BigInt" | "BigDecimal", "zero")
+                    | ("Bytes" | "ByteArray", "empty")
+                    | ("Address", "zero")
+            );
+            if nullary {
+                return format!("{ty}.{field}()");
             }
         }
     }

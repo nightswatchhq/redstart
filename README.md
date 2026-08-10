@@ -101,6 +101,7 @@ inferred `@entity(immutable)` and `prune: auto` ship today; Bytes-id inference,
 | `redstart test` — native test interpreter (mock store + mocked calls, no WASM/Docker/Matchstick) | `redstart-test` | ✅ working |
 | `redstart fmt` — canonical, comment-preserving formatting (`--check` mode) | `redstart-cli` | ✅ working |
 | `redstart dev` — watch loop re-running check → build → test on every change | `redstart-cli` | ✅ working |
+| `redstart verify` — build → `graph codegen` → `graph build`: proves the generated AssemblyScript compiles to WASM, not merely that the Redstart is valid | `redstart-cli` | ✅ working |
 | `redstart deploy` — build → `graph codegen` → `graph build` → `graph deploy` (Studio or self-hosted), with `--dry-run` | `redstart-cli` | ✅ working |
 | Tree-sitter grammar + highlight queries — generated, parses every example with 0 errors | `tree-sitter-redstart` | ✅ working |
 | `redstart lsp` — language server: diagnostics, formatting, symbols, hover, go-to-def, completion | `redstart-lsp` | ✅ working |
@@ -165,9 +166,15 @@ redstart new my-subgraph
 cd my-subgraph
 redstart dev                          # watch loop: check → build → test on save
 redstart build                        # emit schema.graphql + subgraph.yaml + mappings.ts
+redstart verify                       # …and prove the output compiles to WASM
 redstart deploy my-slug --dry-run     # build → graph codegen → graph build (no network)
 redstart deploy my-slug               # …and graph deploy to Subgraph Studio
 ```
+
+**Porting an existing subgraph?** Start with the
+[porting guide](docs/book/src/porting.md): the schema and mapping translation
+tables, what an event handler can and cannot see, and the pattern that replaces
+receipt inspection.
 
 Want to poke at the worked examples? Clone the repo and point `redstart` at them:
 

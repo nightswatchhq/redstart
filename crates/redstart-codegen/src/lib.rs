@@ -12,6 +12,7 @@
 mod lower;
 mod manifest;
 mod mappings;
+mod names;
 mod schema;
 
 use lower::Env;
@@ -152,6 +153,12 @@ pub fn generate(tree: &ModuleTree, checked: &mut Checked) -> Generated {
         || entities
             .iter()
             .any(|e| e.modifiers.iter().any(|m| m.name == "timeseries"));
+    // Project-wide names and bind targets: both need every declaration at once,
+    // so they are resolved here and shared by the manifest and the mappings —
+    // the manifest's `handler:` entry *is* the exported function name.
+    let names = names::Names::new(&handlers);
+    let bound_abis = names::bound_abis(&handlers, &functions, &checked.abis.paths);
+
     let input = ManifestInput {
         name: &tree.name,
         description: tree.description.as_deref(),
@@ -160,6 +167,8 @@ pub fn generate(tree: &ModuleTree, checked: &mut Checked) -> Generated {
         handlers: &handlers,
         entity_names: &entity_names,
         uses_aggregations,
+        names: &names,
+        bound_abis: &bound_abis,
     };
     let (manifest_src, mut warnings) = manifest::render(&input, &mut checked.abis);
 
@@ -182,7 +191,14 @@ pub fn generate(tree: &ModuleTree, checked: &mut Checked) -> Generated {
             fn_returns,
             abis: &mut checked.abis,
         };
-        mappings::render(&handlers, &functions, &entity_names, &mut env)
+        mappings::render(
+            &handlers,
+            &functions,
+            &entity_names,
+            &names,
+            &bound_abis,
+            &mut env,
+        )
     };
     warnings.extend(map_warnings);
     let mut notes = Vec::new();
@@ -680,6 +696,110 @@ handler on Token.Transfer(event) {
             "got:\n{m}"
         );
         assert!(gen.warnings.is_empty(), "warnings: {:?}", gen.warnings);
+    }
+
+    // ---- porting-friction regressions (v0.16.0) ----
+
+    /// Build a project with two ABI files, so cross-ABI binds can be exercised.
+    fn build_two_abi(main_red: &str, abi_a: (&str, &str), abi_b: (&str, &str)) -> Generated {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("src/abis")).unwrap();
+        fs::write(
+            dir.path().join("redstart.toml"),
+            "[project]\nname = \"two\"\nentry = \"src/main.red\"\ndescription = \"has: a colon\"",
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join(format!("src/abis/{}.json", abi_a.0)),
+            abi_a.1,
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join(format!("src/abis/{}.json", abi_b.0)),
+            abi_b.1,
+        )
+        .unwrap();
+        fs::write(dir.path().join("src/main.red"), main_red).unwrap();
+
+        let tree = redstart_loader::load(dir.path()).unwrap();
+        let mut checked = redstart_checker::check(&tree).expect("check should pass");
+        generate(&tree, &mut checked)
+    }
+
+    const READER_ABI: &str = r#"[{"type":"function","name":"balanceOf","stateMutability":"view",
+        "inputs":[{"name":"account","type":"address"}],
+        "outputs":[{"name":"","type":"uint256"}]}]"#;
+
+    #[test]
+    fn two_sources_sharing_an_event_get_distinct_symbols() {
+        // Same event name on two sources used to emit two `handleTransfer`s and
+        // two `Transfer as TransferEvent` imports — `graph build` rejected both.
+        let gen = build(
+            r#"
+abi ERC20 from "./abis/ERC20.json"
+entity Account { id: Id<Bytes> balance: BigInt }
+source Token { abi: ERC20 network: mainnet address: 0x1234567890abcdef1234567890abcdef12345678 startBlock: 1 }
+source Other { abi: ERC20 network: mainnet address: 0xabcdefabcdefabcdefabcdefabcdefabcdefabcd startBlock: 1 }
+handler on Token.Transfer(event) { let a = Account.loadOrCreate(event.params.to, { balance: BigInt.zero }) }
+handler on Other.Transfer(event) { let a = Account.loadOrCreate(event.params.to, { balance: BigInt.zero }) }
+"#,
+            TRANSFER_ABI,
+        );
+        let m = &gen.mappings;
+        assert!(m.contains("export function handleTokenTransfer("));
+        assert!(m.contains("export function handleOtherTransfer("));
+        assert!(!m.contains("export function handleTransfer("));
+        assert!(m.contains("Transfer as TokenTransferEvent"));
+        assert!(m.contains("Transfer as OtherTransferEvent"));
+        // …and the manifest points each source at its own function.
+        assert!(gen.manifest.contains("handler: handleTokenTransfer"));
+        assert!(gen.manifest.contains("handler: handleOtherTransfer"));
+    }
+
+    #[test]
+    fn a_bound_abi_is_imported_and_listed_in_the_manifest() {
+        // Reading another contract used to emit `Reader.bind(...)` with no import
+        // and no manifest entry: `Cannot find name 'Reader'` on eject.
+        let gen = build_two_abi(
+            r#"
+abi ERC20 from "./abis/ERC20.json"
+abi Reader from "./abis/Reader.json"
+entity Account { id: Id<Bytes> balance: BigInt }
+source Token { abi: ERC20 network: mainnet address: 0x1234567890abcdef1234567890abcdef12345678 startBlock: 1 }
+handler on Token.Transfer(event) {
+  match Reader.bind(event.address).balanceOf(event.params.to) {
+    Ok(v) => { let a = Account.loadOrCreate(event.params.to, { balance: v }) }
+    Err(e) => { }
+  }
+}
+"#,
+            ("ERC20", TRANSFER_ABI),
+            ("Reader", READER_ABI),
+        );
+        assert!(gen
+            .mappings
+            .contains("import { Reader } from \"../generated/Token/Reader\""));
+        assert!(gen.manifest.contains("- name: Reader"));
+        assert!(gen.manifest.contains("file: ./abis/Reader.json"));
+        // A description containing a colon must still be valid YAML.
+        assert!(gen.manifest.contains("description: \"has: a colon\""));
+    }
+
+    #[test]
+    fn none_lowers_to_null_so_the_generated_setter_unsets() {
+        let gen = build(
+            r#"
+abi ERC20 from "./abis/ERC20.json"
+entity Account { id: Id<Bytes> balance: BigInt label: Option<String> }
+source Token { abi: ERC20 network: mainnet address: 0x1234567890abcdef1234567890abcdef12345678 startBlock: 1 }
+handler on Token.Transfer(event) {
+  let a = Account.loadOrCreate(event.params.to, { balance: BigInt.zero })
+  a.label = None
+}
+"#,
+            TRANSFER_ABI,
+        );
+        assert!(gen.mappings.contains("a.label = null"));
     }
 }
 

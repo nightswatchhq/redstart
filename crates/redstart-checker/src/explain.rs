@@ -169,6 +169,27 @@ static EXPLANATIONS: &[Explanation] = &[
         fix: "Use a field declared on the entity.",
     },
     Explanation {
+        code: "E055",
+        title: "`.save()` on an entity",
+        summary: "Code called `.save()` on an entity, the AssemblyScript habit Redstart removes.",
+        prevents: "Both halves of the classic save bug: the forgotten `.save()` that silently drops a write, and the stale-overwrite from saving a copy loaded earlier.",
+        fix: "Delete the call. Redstart dirty-tracks every entity it creates or mutates and saves it at the end of the scope it was declared in — including on an early `return`, and inside a `match` arm.",
+    },
+    Explanation {
+        code: "E056",
+        title: "cleared a required field",
+        summary: "Code assigned `None` to a field that isn't declared `Option<T>`.",
+        prevents: "Writing a null into a non-nullable column — graph-node fails the write with `missing value for non-nullable field` mid-sync.",
+        fix: "Declare the field `Option<T>` if it can genuinely be absent, then `entity.field = None` clears it (lowered to graph-ts's `unset`). Otherwise assign a real value.",
+    },
+    Explanation {
+        code: "E057",
+        title: "unknown trigger parameter",
+        summary: "`event.params.x` (or `call.inputs.x`) named a parameter the ABI's event/function doesn't declare.",
+        prevents: "The exact drift Redstart exists to remove: a renamed or mistyped parameter that the Redstart build accepts and only the AssemblyScript compiler rejects — or worse, one that reads a different value than intended.",
+        fix: "Use a parameter the ABI declares (the diagnostic lists them). Unnamed ABI inputs are addressed positionally as `param0`, `param1`, … exactly as `graph codegen` names them.",
+    },
+    Explanation {
         code: "E060",
         title: "`.value` of a contract call read directly",
         summary: "Code touched `.value` of a contract call without matching its `Result`.",

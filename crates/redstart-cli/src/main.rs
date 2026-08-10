@@ -108,6 +108,17 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Build, then prove the output compiles: `graph codegen` + `graph build`.
+    ///
+    /// `redstart check` answers "is this Redstart valid?"; `verify` answers the
+    /// question that actually matters before a deploy — "does the generated
+    /// subgraph compile to WASM?" Needs Node and npm; the canonical toolchain is
+    /// installed into the build directory on first run.
+    Verify {
+        /// Path to a project directory, `redstart.toml`, or a `.red` file.
+        #[arg(default_value = ".")]
+        path: PathBuf,
+    },
     /// Explain a diagnostic code — what it means, the bug it prevents, the fix.
     ///
     /// `redstart explain E062`, or `redstart explain` to list every code.
@@ -151,6 +162,7 @@ fn main() -> ExitCode {
             version_label.as_deref(),
             dry_run,
         ),
+        Command::Verify { path } => cmd_verify(&path),
         Command::Fix { path, ids, dry_run } => cmd_fix(&path, ids, dry_run),
         Command::Explain { code, json } => cmd_explain(code.as_deref(), json),
         Command::Lsp => {
@@ -385,6 +397,72 @@ fn cmd_build(path: &Path) -> Result<(), String> {
     println!("  • subgraph.yaml");
     println!("  • src/mappings.ts");
     println!("  • abis/ ({} file(s))", generated.abi_copies.len());
+    // Say plainly which half of the tree is authored and which is output — in a
+    // migration, generated mappings are easily mistaken for retained legacy ones.
+    println!(
+        "  generated output — don't edit or commit it; the .red sources are the truth. \
+         `redstart verify` proves it compiles."
+    );
+    Ok(())
+}
+
+/// Run the canonical toolchain over an emitted subgraph: pin `graph-cli` /
+/// `graph-ts`, install them if needed, then `graph codegen` + `graph build`.
+///
+/// This is the eject path, and the only thing that can honestly answer "will
+/// this deploy?" — a Redstart build proves the *source* is valid, not that the
+/// AssemblyScript it emitted compiles.
+fn compile_eject(out: &Path) -> Result<(), String> {
+    let pkg = out.join("package.json");
+    if !pkg.exists() {
+        std::fs::write(
+            &pkg,
+            "{\n  \"name\": \"redstart-subgraph\",\n  \"private\": true,\n  \"devDependencies\": {\n    \"@graphprotocol/graph-cli\": \"latest\",\n    \"@graphprotocol/graph-ts\": \"latest\"\n  }\n}\n",
+        )
+        .map_err(|e| format!("failed to write package.json: {e}"))?;
+    }
+
+    if !out.join("node_modules").exists() {
+        println!("\x1b[1;36m▸\x1b[0m npm install (graph-cli + graph-ts)");
+        run_in(out, "npm", &["install", "--no-audit", "--no-fund"])?;
+    }
+
+    println!("\x1b[1;36m▸\x1b[0m graph codegen");
+    run_in(
+        out,
+        "npx",
+        &["--no-install", "graph", "codegen", "subgraph.yaml"],
+    )?;
+    println!("\x1b[1;36m▸\x1b[0m graph build");
+    run_in(
+        out,
+        "npx",
+        &["--no-install", "graph", "build", "subgraph.yaml"],
+    )
+}
+
+/// `redstart verify` — build, then prove the generated subgraph compiles.
+fn cmd_verify(path: &Path) -> Result<(), String> {
+    let tree = load(path)?;
+    let mut checked = check(&tree)?;
+    let generated = redstart_codegen::generate(&tree, &mut checked);
+    generated.write_to(&tree.out_dir).map_err(|e| {
+        format!(
+            "failed to write build output to {}: {e}",
+            tree.out_dir.display()
+        )
+    })?;
+    for warning in &generated.warnings {
+        eprintln!("warning: {warning}");
+    }
+    let out = &tree.out_dir;
+    println!("\x1b[1;36m▸\x1b[0m emitted subgraph → {}", out.display());
+
+    compile_eject(out)?;
+    println!(
+        "\x1b[1;32m✓\x1b[0m verified — `{}` checks, generates, and compiles to WASM",
+        tree.name
+    );
     Ok(())
 }
 
@@ -412,35 +490,8 @@ fn cmd_deploy(
     let out = &tree.out_dir;
     println!("\x1b[1;36m▸\x1b[0m emitted subgraph → {}", out.display());
 
-    // 2. Ensure a package.json pinning the canonical toolchain.
-    let pkg = out.join("package.json");
-    if !pkg.exists() {
-        std::fs::write(
-            &pkg,
-            "{\n  \"name\": \"redstart-subgraph\",\n  \"private\": true,\n  \"devDependencies\": {\n    \"@graphprotocol/graph-cli\": \"latest\",\n    \"@graphprotocol/graph-ts\": \"latest\"\n  }\n}\n",
-        )
-        .map_err(|e| format!("failed to write package.json: {e}"))?;
-    }
-
-    // 3. Install the toolchain if it isn't already present.
-    if !out.join("node_modules").exists() {
-        println!("\x1b[1;36m▸\x1b[0m npm install (graph-cli + graph-ts)");
-        run_in(out, "npm", &["install", "--no-audit", "--no-fund"])?;
-    }
-
-    // 4. graph codegen + graph build — the eject path.
-    println!("\x1b[1;36m▸\x1b[0m graph codegen");
-    run_in(
-        out,
-        "npx",
-        &["--no-install", "graph", "codegen", "subgraph.yaml"],
-    )?;
-    println!("\x1b[1;36m▸\x1b[0m graph build");
-    run_in(
-        out,
-        "npx",
-        &["--no-install", "graph", "build", "subgraph.yaml"],
-    )?;
+    // 2-4. Compile the emitted subgraph with the canonical toolchain.
+    compile_eject(out)?;
 
     if dry_run {
         println!("\x1b[1;32m✓\x1b[0m dry run complete — subgraph compiled; skipped deploy");
@@ -853,7 +904,13 @@ fn cmd_new(name: &str) -> Result<(), String> {
         &root.join("redstart.toml"),
         &format!("[project]\nname = \"{name}\"\nentry = \"src/main.red\"\nout_dir = \"build\"\n"),
     )?;
-    write_file(&root.join(".gitignore"), "/build\n")?;
+    write_file(
+        &root.join(".gitignore"),
+        "# Generated by `redstart build` — the `.red` files are the source of truth.\n\
+         /build\n\
+         /dist\n\
+         node_modules/\n",
+    )?;
     write_file(&src.join("main.red"), STARTER_MAIN)?;
     write_file(&src.join("accounts.red"), STARTER_ACCOUNTS)?;
     write_file(&abis.join("ERC20.json"), STARTER_ABI)?;

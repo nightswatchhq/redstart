@@ -199,7 +199,7 @@ fn scalar_or_ref(ty: &TypeExpr) -> String {
         // GraphQL has no Address scalar; The Graph models addresses as Bytes.
         "Address" => "Bytes",
         "String" => "String",
-        "Bool" => "Boolean",
+        "Bool" | "Boolean" => "Boolean",
         "Int" => "Int",
         "Int8" => "Int8",
         "Timestamp" => "Timestamp",
