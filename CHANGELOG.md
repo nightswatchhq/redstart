@@ -23,7 +23,7 @@ The porting release.
 - **`Boolean` is accepted** alongside `Bool`, because that is what every `schema.graphql` says. The checker used to reject it while its own error text recommended it.
 - **`E057`, unknown trigger parameter.** `event.params.x` (or `call.inputs.x`) naming something the ABI doesn't declare is now an error listing the real parameter names, instead of passing through to fail at `graph build`. Unnamed ABI inputs are `param0`, `param1`, … exactly as `graph codegen` names them.
 - **`E055`, `.save()` teaches instead of confusing.** It used to report "`X` has no field `save`". It now explains that entities dirty-track and save themselves. The catalogue is 35 codes (29 errors, 6 warnings).
-- **[Porting an existing subgraph](docs/book/src/porting.md)**, a book chapter covering the schema and mapping translation tables, exactly what an event handler can see (and that `event.receipt` is not available), the transaction-keyed staging-entity pattern that replaces receipt inspection, multi-source event names, and multi-network deployment.
+- **[Porting an existing subgraph](https://nightswatchhq.github.io/redstart/porting.html)**, a book chapter covering the schema and mapping translation tables, exactly what an event handler can see (and that `event.receipt` is not available), the transaction-keyed staging-entity pattern that replaces receipt inspection, multi-source event names, and multi-network deployment.
 - `redstart new` writes a fuller `.gitignore`, and `redstart build` says plainly that its output is generated.
 
 ## [0.15.0] - 2026-07-10
