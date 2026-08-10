@@ -8,8 +8,8 @@ translation will not work.
 
 Do it in this order. Schema first, because everything else references it; then
 sources; then one handler at a time, running `redstart check` after each. Leave
-the receipt-dependent handlers for last — they need redesigning, not translating,
-and they are covered at the end.
+the receipt-dependent handlers for last. They need redesigning rather than
+translating, and they are covered at the end.
 
 ## Finish with `verify`, not `build`
 
@@ -20,13 +20,13 @@ redstart verify    # …and prove the generated AssemblyScript compiles to WASM
 ```
 
 `check` and `build` answer questions about your *source*. Only `verify` runs the
-canonical `graph codegen` + `graph build` over the output, which is the question
-that decides whether a deploy will work. Run it before every deploy and in CI. It
+canonical `graph codegen` + `graph build` over the output, and that is the
+question which decides whether a deploy will work. Run it before every deploy and in CI. It
 needs Node and npm; the toolchain is installed into the build directory the first
 time. (`redstart deploy <name> --dry-run` does the same thing and then stops.)
 
-The generated directory is output, not source. Add it to `.gitignore` — `redstart
-new` does this for you — and never edit it: the next build overwrites it.
+The generated directory is output, not source. Add it to `.gitignore` (`redstart
+new` does this for you) and never edit it, since the next build overwrites it.
 
 ## Schema: types
 
@@ -35,7 +35,7 @@ new` does this for you — and never edit it: the next build overwrites it.
 | `id: ID!` | `id: Id<Bytes>` (preferred) or `id: Id<String>` |
 | `field: BigInt!` | `field: BigInt` |
 | `field: BigInt` (nullable) | `field: Option<BigInt>` |
-| `field: Boolean!` | `field: Boolean` (or `Bool` — both are accepted) |
+| `field: Boolean!` | `field: Boolean` (or `Bool`, both are accepted) |
 | `field: Int!` / `Int8!` | `field: Int` / `Int8` |
 | `field: [String!]!` | `field: [String]` |
 | `field: Token!` | `field: Token` |
@@ -59,12 +59,12 @@ choice; `redstart explain W040` spells out the trade.
 |---|---|
 | `let e = Entity.load(id); if (e == null) { e = new Entity(id); … }` | `let e = Entity.loadOrCreate(id, { … })` |
 | `new Entity(id)` | `Entity.create(id, { … })` |
-| `entity.save()` | nothing — entities auto-save (`E055` if you write it) |
+| `entity.save()` | nothing at all: entities auto-save (`E055` if you write it) |
 | `a.plus(b)` / `a.minus(b)` / `a.times(b)` / `a.div(b)` | `a + b` / `a - b` / `a * b` / `a / b` |
 | `let r = c.try_f(x); if (!r.reverted) { r.value … }` | `match C.bind(addr).f(x) { Ok(v) => { … } Err(e) => { … } }` |
 | `let e = Entity.load(id); if (e != null) { e.field … }` | `match Entity.load(id) { Some(e) => { … } None => { … } }` |
 | `entity.field = null` | `entity.field = None` (the field must be `Option<T>`) |
-| `x ? a : b` | `let v = b` then `if cond { v = a }` — there is no ternary |
+| `x ? a : b` | `let v = b` then `if cond { v = a }`, there is no ternary |
 | `const ZERO = BigInt.fromI32(0)` | a helper: `fn zero() -> BigInt { return BigInt.zero }` |
 | `Template.create(addr)` | `Template.create(addr)` (unchanged) |
 
@@ -94,7 +94,7 @@ you're porting does any of that, it needs the redesign below.
 
 Call handlers see `call.inputs.<name>`, `call.outputs.<name>`, `call.block` and
 `call.transaction`. Note that call handlers need Parity-style tracing, which most
-L2s do not provide — `W010` warns when the network can't support them.
+L2s do not provide, `W010` warns when the network can't support them.
 
 ## Replacing receipt inspection
 
@@ -104,7 +104,7 @@ through an entity keyed by transaction hash.**
 Concretely, where the old mapping read a future log from inside a handler:
 
 1. the first handler writes what it knows into a staging entity whose id contains
-   `event.transaction.hash` (plus any discriminator — a collateral index, a
+   `event.transaction.hash` (plus any discriminator, a collateral index, a
    borrower, a batch manager);
 2. the handler for the event that used to be read out of the receipt runs
    normally when graph-node reaches it, loads the staging entity, and completes
@@ -113,12 +113,12 @@ Concretely, where the old mapping read a future log from inside a handler:
 This is strictly more robust than a `logIndex + 2` assumption, which breaks the
 moment the contract emits an extra log. It does rely on the two events landing in
 the expected order within the transaction, so write that invariant down and test
-it — a contract change can violate it.
+it, a contract change can violate it.
 
 Two things to decide deliberately. Staging entities are implementation detail
 rather than public API, so name them accordingly (`PendingBatchUpdate`,
 `PendingLiquidation`) and document that consumers should ignore them. And if more
-than one occurrence per transaction is possible, key or accumulate accordingly —
+than one occurrence per transaction is possible, key or accumulate accordingly -
 a single pending record silently overwrites.
 
 ## Reading other contracts
@@ -152,8 +152,8 @@ shape. Hoist it or cache the result.
 ## Several sources, one event name
 
 Perfectly fine. Three registry contracts all handling
-`CollSurplusPoolAddressChanged` generate three distinct exported functions —
-`handleAddressesRegistrySource0CollSurplusPoolAddressChanged` and so on — with
+`CollSurplusPoolAddressChanged` generate three distinct exported functions -
+`handleAddressesRegistrySource0CollSurplusPoolAddressChanged` and so on, with
 the manifest pointing each source at its own. Handler symbols stay unqualified
 (`handleTransfer`) when there is nothing to disambiguate.
 
@@ -176,7 +176,7 @@ historical and fresh deployments.
 - **Receipts.** Covered above.
 - **Dynamic array sizing from context.** Arrays are written as literals
   (`[0, 0, 0]`), so a length that depends on runtime context has to be handled
-  explicitly — build the array in a loop, or accept the fixed length and assert
+  explicitly, build the array in a loop, or accept the fixed length and assert
   the invariant that justifies it.
 - **A ternary expression.** Use an `if`.
 - **Module-level constants.** Use a helper `fn`.
@@ -186,6 +186,6 @@ historical and fresh deployments.
 
 `redstart check` catching a mistake is the good case, and `redstart verify`
 failing is the acceptable one. A generated mapping that fails `graph build`
-without either of them complaining is a bug in Redstart — please
+without either of them complaining is a bug in Redstart, please
 [open an issue](https://github.com/nightswatchhq/redstart/issues) with the
 smallest `.red` file that reproduces it.
