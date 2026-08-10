@@ -11,57 +11,20 @@ pulls the section matching each tag into the GitHub Release notes.
 The porting release.
 
 ### Fixed
-- **Handler symbols are source-qualified when they would collide.** Two sources
-  handling the same event name (three registry contracts all emitting
-  `CollSurplusPoolAddressChanged`, say) emitted three identically-named exported
-  functions, three imports sharing one alias, and three manifest entries pointing
-  at the same symbol, which `graph build` rejects with `Duplicate identifier`.
-  Colliding handlers now become `handle<Source><Event>` and their trigger classes
-  are aliased per source. A name with nothing to disambiguate is untouched, so
-  the common single-source case still reads `handleTransfer`.
-- **A bound ABI is imported and listed in the manifest.** `Abi.bind(addr)` for a
-  contract the data source doesn't itself watch, such as reading a token's
-  `symbol()` from a factory handler or a registry from inside a helper `fn`,
-  emitted the contract class with no import and no manifest `abis:` entry,
-  failing eject with `Cannot find name`. Every bind, including in a helper, is
-  now resolved across the project: the ABI is listed on each data source and
-  imported from the module `graph codegen` writes it to. Declaring an inert
-  template with a dummy block handler is no longer necessary.
-- **Narrow Solidity integers lower correctly.** A `uint8`/`uint16`/`uint24` or
-  `int8`…`int32` parameter was typed `BigInt`, so `event.params.op == 1` emitted
-  `.equals(1)` on what `graph codegen` had made a native `i32`. The width table
-  now matches graph-cli's exactly, and Solidity array types map to lists.
-- **A description containing a colon no longer breaks the manifest.** It is
-  emitted as a quoted YAML scalar. Previously the graph CLI refused to parse
-  `subgraph.yaml` at all.
-- **`Bytes.empty` / `Address.zero` are called, not referenced.** They lowered to
-  a bare function reference that failed to compile, like `BigInt.zero` before it.
+- **Handler symbols are source-qualified when they would collide.** Two sources handling the same event name (three registry contracts all emitting `CollSurplusPoolAddressChanged`, say) emitted three identically-named exported functions, three imports sharing one alias, and three manifest entries pointing at the same symbol, which `graph build` rejects with `Duplicate identifier`. Colliding handlers now become `handle<Source><Event>` and their trigger classes are aliased per source. A name with nothing to disambiguate is untouched, so the common single-source case still reads `handleTransfer`.
+- **A bound ABI is imported and listed in the manifest.** `Abi.bind(addr)` for a contract the data source doesn't itself watch, such as reading a token's `symbol()` from a factory handler or a registry from inside a helper `fn`, emitted the contract class with no import and no manifest `abis:` entry, failing eject with `Cannot find name`. Every bind, including in a helper, is now resolved across the project: the ABI is listed on each data source and imported from the module `graph codegen` writes it to. Declaring an inert template with a dummy block handler is no longer necessary.
+- **Narrow Solidity integers lower correctly.** A `uint8`/`uint16`/`uint24` or `int8`…`int32` parameter was typed `BigInt`, so `event.params.op == 1` emitted `.equals(1)` on what `graph codegen` had made a native `i32`. The width table now matches graph-cli's exactly, and Solidity array types map to lists.
+- **A description containing a colon no longer breaks the manifest.** It is emitted as a quoted YAML scalar. Previously the graph CLI refused to parse `subgraph.yaml` at all.
+- **`Bytes.empty` / `Address.zero` are called, not referenced.** They lowered to a bare function reference that failed to compile, like `BigInt.zero` before it.
 
 ### Added
-- **`redstart verify`** builds, then runs `graph codegen` + `graph build` over
-  the output. `check` and `build` answer questions about your source; `verify`
-  answers the one that decides a deploy, and it is the command to put in CI.
-  (`deploy --dry-run` already did this. `verify` is the honest name for it.)
-- **`entity.field = None`** clears an optional field, lowering to the generated
-  setter's `unset`, with no raw `store.get`/`unset`/`store.set` escape hatch.
-  `E056` rejects clearing a field that isn't `Option<T>`.
-- **`Boolean` is accepted** alongside `Bool`, because that is what every
-  `schema.graphql` says. The checker used to reject it while its own error text
-  recommended it.
-- **`E057`, unknown trigger parameter.** `event.params.x` (or `call.inputs.x`)
-  naming something the ABI doesn't declare is now an error listing the real
-  parameter names, instead of passing through to fail at `graph build`. Unnamed
-  ABI inputs are `param0`, `param1`, … exactly as `graph codegen` names them.
-- **`E055`, `.save()` teaches instead of confusing.** It used to report "`X` has
-  no field `save`". It now explains that entities dirty-track and save
-  themselves. The catalogue is 35 codes (29 errors, 6 warnings).
-- **[Porting an existing subgraph](docs/book/src/porting.md)**, a book chapter
-  covering the schema and mapping translation tables, exactly what an event
-  handler can see (and that `event.receipt` is not available), the
-  transaction-keyed staging-entity pattern that replaces receipt inspection,
-  multi-source event names, and multi-network deployment.
-- `redstart new` writes a fuller `.gitignore`, and `redstart build` says plainly
-  that its output is generated.
+- **`redstart verify`** builds, then runs `graph codegen` + `graph build` over the output. `check` and `build` answer questions about your source; `verify` answers the one that decides a deploy, and it is the command to put in CI. (`deploy --dry-run` already did this. `verify` is the honest name for it.)
+- **`entity.field = None`** clears an optional field, lowering to the generated setter's `unset`, with no raw `store.get`/`unset`/`store.set` escape hatch. `E056` rejects clearing a field that isn't `Option<T>`.
+- **`Boolean` is accepted** alongside `Bool`, because that is what every `schema.graphql` says. The checker used to reject it while its own error text recommended it.
+- **`E057`, unknown trigger parameter.** `event.params.x` (or `call.inputs.x`) naming something the ABI doesn't declare is now an error listing the real parameter names, instead of passing through to fail at `graph build`. Unnamed ABI inputs are `param0`, `param1`, … exactly as `graph codegen` names them.
+- **`E055`, `.save()` teaches instead of confusing.** It used to report "`X` has no field `save`". It now explains that entities dirty-track and save themselves. The catalogue is 35 codes (29 errors, 6 warnings).
+- **[Porting an existing subgraph](docs/book/src/porting.md)**, a book chapter covering the schema and mapping translation tables, exactly what an event handler can see (and that `event.receipt` is not available), the transaction-keyed staging-entity pattern that replaces receipt inspection, multi-source event names, and multi-network deployment.
+- `redstart new` writes a fuller `.gitignore`, and `redstart build` says plainly that its output is generated.
 
 ## [0.15.0] - 2026-07-10
 
