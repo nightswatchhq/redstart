@@ -1,12 +1,14 @@
 # yatr - https://github.com/cargopete/yatr
 #
-# Task names are the same across every nightswatchhq repo, so `yatr ci` means
-# the same thing wherever you are. Note that `ci` is deliberately not called
-# `check`: `yatr check` is a builtin that validates this file, and it shadows
-# any task of that name without warning.
+# These tasks are what .github/workflows CI runs, command for command, so
+# `yatr ci` locally is the same gate. The workflow calls these tasks by name:
+# change a command here and CI changes with it.
+#
+# The aggregate is `ci`, not `check`: `yatr check` is a builtin that validates
+# this file and shadows any task of that name without warning.
 
 [env]
-RUST_BACKTRACE = "1"
+CARGO_TERM_COLOR = "always"
 
 [settings]
 cache = true
@@ -18,17 +20,17 @@ run = ["cargo fmt --all"]
 no_cache = true
 
 [tasks.fmt-check]
-desc = "Fail if the tree is unformatted"
-run = ["cargo fmt --all -- --check"]
-sources = ["**/*.rs", "rustfmt.toml"]
+desc = "Fail if the tree is unformatted (CI: rustfmt)"
+run = ["cargo fmt --all --check"]
+sources = ["**/*.rs"]
 
 [tasks.lint]
-desc = "Clippy with warnings denied"
+desc = "Clippy with warnings denied (CI: clippy)"
 run = ["cargo clippy --workspace --all-targets -- -D warnings"]
 sources = ["**/*.rs", "**/Cargo.toml", "Cargo.lock"]
 
 [tasks.test]
-desc = "Run the test suite"
+desc = "Run the test suite (CI: test)"
 run = ["cargo test --workspace"]
 sources = ["**/*.rs", "**/Cargo.toml", "Cargo.lock"]
 watch = ["**/*.rs"]
@@ -43,7 +45,13 @@ desc = "Build the API docs"
 run = ["cargo doc --workspace --no-deps"]
 sources = ["**/*.rs"]
 
+[tasks.conformance]
+desc = "Eject-path proof for one example: redstart build then graph codegen/build"
+run = ["./conformance/run.sh build"]
+env = { PROJECT = "examples/erc20" }
+no_cache = true
+
 [tasks.ci]
-desc = "What CI runs: fmt-check, lint, test"
+desc = "What the CI check job runs: fmt-check, lint, test"
 depends = ["fmt-check", "lint", "test"]
 run = []
